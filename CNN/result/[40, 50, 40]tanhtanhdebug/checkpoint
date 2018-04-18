@@ -1,0 +1,6 @@
+model_checkpoint_path: "step-900"
+all_model_checkpoint_paths: "step-500"
+all_model_checkpoint_paths: "step-600"
+all_model_checkpoint_paths: "step-700"
+all_model_checkpoint_paths: "step-800"
+all_model_checkpoint_paths: "step-900"

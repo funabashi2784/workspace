@@ -1,0 +1,210 @@
+# -*- coding: utf-8 -*-
+import sys, os, logging
+sys.path.append('../../Utils')
+sys.path.append('../CNN')
+sys.path.append('../plotUtils')
+sys.path.append('../result/[40,50,16]tanhtanh1/[40, 50, 16]tanhtanh1')
+print((os.environ["PATH"]))  #=>cudaにパスが通ってないPATHが表示
+os.environ['PATH'] += ':/usr/local/cuda-8.0/bin:/usr/local/cuda-8.0/bin'  #CUDAに通す
+print((os.environ["PATH"]))  #CUDAへのパスが追加された
+from IPython.core.debugger import Tracer; keyboard = Tracer()
+import matplotlib.pyplot as plt
+# add path of the root directory
+sys.path.append(os.path.abspath(os.path.dirname(__file__))+'/../..')
+import numpy as np
+from PIL import Image
+from matplotlib import pylab as plt
+import glob
+import shutil
+import csv
+import numpy as np
+import pandas as pd 
+import tensorflow as tf
+import cv2
+# from DNN import *
+from CNN import CNN
+from Trainer import Train
+from LearningPack import LearningPack
+import HandlingDataProcessor as hdp
+import ConfigHandler
+import logplot
+logger = logging.getLogger(__name__)
+
+
+#===============================================================================
+# Methods
+#===============================================================================
+# 学習オプション
+configFile = './../config/NNConfig.ini'
+inputType  = ['MOTOR','SIXAXIS','IMAGE']
+# inputType  = ['MOTOR','SIXAXIS', 'SIZE', 'SHAPE']
+#     inputType  = ['MOTOR', 'SIXAXIS','PSV', 'TACTILE', 'SIZE', 'SHAPE']
+outputType = ['MOTOR']
+#     outputType  = ['MOTOR','SIXAXIS','PSV','TACTILE']    
+testSize   = 0.1
+scalingMode = {'Mode':'MinMax'}
+#     scalingMode = {'Mode':'DataLimit'}
+#     scalingMode = {'Mode':'Normalize', 'variance': 0.5, 'absMax': 2.0}
+#     pruningMode = {'Mode':'DownSampling', 'timeInterval':20}
+#     pruningMode = {'Mode':['ForcePruning'], 'unstableForceMagnitude':0.25}
+#     pruningMode = {'Mode':['DownSampling', 'ForcePruning'], 'timeInterval':20, 'unstableForceMagnitude':0.25}
+pruningMode = {'Mode':['DownSampling', 'ForcePruning','RandomSampling'], 'timeInterval':5, 'unstableForceMagnitude':0,'samplingNum':3000}
+# pruningMode = {'Mode':['DownSampling', 'ForcePruning','RandomSampling'], 'timeInterval':2, 'unstableForceMagnitude':0,'samplingNum':10000}
+# pruningMode = {'Mode':['Euclidean', 'ForcePruning','RandomSampling'], 'thresholdDist':0.005, 'unstableForceMagnitude':0,'samplingNum':3500}
+# pruningMode = {'Mode':['Euclidean', 'ForcePruning','RandomSampling'], 'thresholdDist':0.00, 'unstableForceMagnitude':0,'samplingNum':700}
+#     pruningMode = {'Mode':['DownSampling', 'Euclidean', 'ForcePruning', 'RandomSampling'],
+#                    'timeInterval':10, 'thresholdDist':0.1, 'unstableForceMagnitude':3750, 'samplingNum':30}
+
+isRandomize    = True
+
+# 識別用タグ
+#     TAG  = 'S246C246_Feat_ds20_Prune3750_momSW_seed1418096436_SdA_S246C246_H807060_optimized_datanum900-5'      #champion 
+#     TAG  = 'S246C246_Raw_ds20_Prune3750_momSW_seed1418096436_SdA_S246C246_H100050025015010020_TimeSeries'
+#     TAG  = 'S246C246_Raw_ds20_Prune3750_momSW_seed1418096436_PCA_dim2'
+TAG  = 'TestDebug'
+
+SDATAG = None
+#     SDATAG = 'SdA_S246C246_H807060_optimized'
+    
+PCATAG = None
+#     PCATAG  = 'S246C246_MSPT_ds10_euc.03_rs10000_dim93'
+
+
+# 学習 or テストの選択
+MODE = 'Training'
+# MODE = 'Testing'
+# MODE = 'Finetuning'
+
+
+# Learning Packの作成
+lp = LearningPack(mode=MODE, tag=TAG, configFile=configFile, estimatorType='NN',
+                inputType=inputType, outputType=outputType, testSize=testSize,
+                scalingMode=scalingMode, pruningMode=pruningMode,
+                isRandomize=isRandomize, 
+                sdatag=SDATAG, pcatag=PCATAG)    # 学習オプション
+#Make learning & testing data (input, teacher)
+inputSignal = np.array(lp.inputSignal[:,list(range(0,40))])
+#     print(inputSignal.shape)
+teacherSignal = np.array(lp.teacherSignal[:,list(range(0,16))])
+#     print(teacherSignal.shape)
+visionSignal = np.array(lp.inputSignal[:,list(range(40,824))])
+visionteacherSignal = np.array(lp.teacherSignal[:,list(range(0,16))])
+tactileSignal = np.zeros((1,1))
+tactileteacherSignal = np.zeros((1,1))
+#     tactileInput = hdp.TactielProcessor()
+inputSignal_Test = np.array(lp.inputSignal_Test[:,list(range(0,40))])
+teacherSignal_Test = np.array(lp.teacherSignal_Test[:,list(range(0,16))])
+visionSignal_Test = np.array(lp.inputSignal_Test[:,list(range(40,824))])
+visionteacherSignal_Test = np.array(lp.teacherSignal_Test[:,list(range(0,16))])
+#     tactileInput_Test = hdp.TactielProcessor()
+tactileSignal_Test = np.zeros((1,1))
+tactileteacherSignal_Test = np.zeros((1,1))
+    
+network=([40,50,40])
+activation=['tanh','tanh']  
+# network=[40,50,50,40]
+# activation=['tanh','tanh','tanh']
+# dirname = "3fin405040-tr5000-six500"
+dirname = "debug1"
+dirname_fine = "debug"
+filename = './step-9900'
+filename_fine = 'step-900'
+Output_dir=str(network)
+Output_dir+=activation[0]+activation[-1]
+
+if os.path.isdir("../result/"+Output_dir+dirname)==False:
+    os.makedirs("../result/"+Output_dir+dirname)
+# if os.path.isdir("../result/"+Output_dir+'finetuning/'+dirname_fine+'/'+filename_fine)==False:
+#     os.makedirs("../result/"+Output_dir+'finetuning/'+dirname_fine+'/'+filename_fine)
+# if os.path.isdir("../result/"+Output_dir+"finetuningoneshot500ver2/Cyl40iter_1000")==False:
+#     os.makedirs("../result/"+Output_dir+"finetuningoneshot500ver2/Cyl40iter_1000")
+
+shutil.copy("train_cnn.py","../result/"+Output_dir)
+
+#Parameter setting for Training
+train_params = {'learning_rate':0.00001, \
+                'keep_prob':0.5, \
+                'decay': 0.0001, \
+                'epoch': 10000, \
+                'print_iter': 100, \
+                'snap_iter': 100, \
+                'test_iter': 100, \
+                'snap_dir': '../result/'+Output_dir+dirname+'/', \
+                'log_name': '../result/'+Output_dir+dirname+'/dnntrain.log', \
+                'batch_size': 100, \
+                'batch_size_test': 100}
+
+#Parameter setting for Finetuning
+train_params_fine = {'learning_rate':0.00001, \
+                     'decay': 0.000001, \
+                     'epoch': 5000, \
+                     'print_iter': 100, \
+                     'snap_iter': 100, \
+                     'test_iter': 100, \
+                     'snap_dir': '../result/'+Output_dir+'finetuning/'+dirname_fine+'/'+filename_fine+'/', \
+                     'log_name': '../result/'+Output_dir+'finetuning/'+dirname_fine+'/'+filename_fine+'/dnntrain.log', \
+                     'batch_size': 100, \
+                     'batch_size_test': 10}
+
+#     Start Session 
+sess = tf.InteractiveSession()
+#Make learning model    
+model = CNN(sess=sess, indata=inputSignal, targetdata=teacherSignal, indatatest=inputSignal_Test, 
+            targetdatatest=teacherSignal_Test,indata_vision=visionSignal, 
+            targetdata_vision=visionteacherSignal, indatatest_vision=visionSignal_Test, 
+            targetdatatest_vision=visionteacherSignal_Test,indata_tactile=tactileSignal, 
+            targetdata_tactile=tactileteacherSignal, indatatest_tactile=tactileSignal_Test, 
+            targetdatatest_tactile=tactileteacherSignal_Test, learning_rate=train_params['learning_rate'])
+
+
+# 学習 or テスト実行
+if MODE == 'Training':
+    #     Initialize Session
+    sess.run(tf.global_variables_initializer())
+#     Start training
+    Train(model=model, indata=inputSignal, targetdata=teacherSignal, indatatest=inputSignal_Test, 
+            targetdatatest=teacherSignal_Test,indata_vision=visionSignal, 
+            targetdata_vision=visionteacherSignal, indatatest_vision=visionSignal_Test, 
+            targetdatatest_vision=visionteacherSignal_Test,indata_tactile=tactileSignal, 
+            targetdata_tactile=tactileteacherSignal, indatatest_tactile=tactileSignal_Test, 
+            targetdatatest_tactile=tactileteacherSignal_Test, train_params=train_params, mode=MODE)
+    # plot the error graph
+#     logplot.logplot(train_params['log_name'])
+    # 終了したらセッションを閉じます。
+    sess.close()
+    pass
+
+elif MODE == 'Finetuning':
+#Make learning & testing data (input, teacher)
+    inputSignal = np.array(lp.inputSignal).astype(np.float32)
+    teacherSignal = np.array(lp.teacherSignal).astype(np.float32)
+    inputSignal_Test = np.array(lp.inputSignal_Test).astype(np.float32)
+    teacherSignal_Test = np.array(lp.teacherSignal_Test).astype(np.float32)
+    
+    # load model
+    Train(model, inputSignal, teacherSignal, inputSignal, teacherSignal, train_params_fine, step=filename_fine, mode=MODE)
+    # plot the error graph
+    logplot.logplot(train_params_fine['log_name'])
+    # 終了したらセッションを閉じます。
+    sess.close()
+    pass
+
+elif MODE == 'Testing':
+    # 学習済みのネットワークパラメータを読み込む
+    # Plot regenerated data 
+#         lp.PlotPrediction(predictFunc=model, predictType=['MOTOR'], plotNum=10,
+#                       isAddLegend=False, isSave=False, STEP=filename)
+#     lp.PlotPrediction(predictFunc=model, predictType=['SIXAXIS'], plotNum=10,
+#                       isAddLegend=False, isSave=False)
+    # Plot PCA graph
+#     lp.PlotPCA(encodeFunc=model, plotDim=2,isSave=False, STEP=filename)
+#     lp.VisualizeNetworkWeights(model)
+    lp.VisualizeNeuralOutputImage(model=model, isSave=False, STEP=filename)
+    # 終了したらセッションを閉じます。
+    sess.close()
+    pass
+
+
+print('------------------------------')
+print('| END of Handler!            |')
+print('------------------------------')
